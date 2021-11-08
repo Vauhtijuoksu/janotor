@@ -3,17 +3,10 @@ name: Deploy Node.js project to function app
 on:
   [push]
 
-    env:
-      AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' 
-
-    - name: 'Resolve Project Dependencies Using Npm'
-      shell: bash
-      run: |
-        pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-        npm install
-        npm run build --if-present
-        npm run test --if-present
-        popd
+env:
+  AZURE_FUNCTIONAPP_NAME: vauhtijuoksu-janotor
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
+  NODE_VERSION: '14.x'
 
 jobs:
   build-and-deploy:
