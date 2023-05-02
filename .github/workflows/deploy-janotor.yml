@@ -6,7 +6,7 @@ on:
 env:
   AZURE_FUNCTIONAPP_NAME: vauhtijuoksu-janotor
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
-  NODE_VERSION: '16.x'
+  NODE_VERSION: '18.x'
 
 jobs:
   build-and-deploy:
