@@ -1,7 +1,8 @@
 const axios = require('axios');
 
 module.exports = async function (context) {
-    const apiResp = await axios.get(process.env.wwfUrl)
+    const amount = Math.floor(Math.random() * (600 - 500) + 500);
+    const apiResp = await axios.get(`${process.env.siteUrl}/api/search/gift?page=1&per_page=${amount}&reference=${process.env.siteId}`)
     const vauhtiApiResp = await axios.get(process.env.vauhtisUrl)
 
     const promises = [];
