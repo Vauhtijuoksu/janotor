@@ -1,2 +1,2 @@
 # Janotor
-Azure function for syncing donations to vauhtijuoksu api
+Deno script for syncing donations to vauhtijuoksu api

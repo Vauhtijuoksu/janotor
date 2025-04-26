@@ -10,7 +10,6 @@ const handleDonationData = async (url) => {
     const donations = apiRespJson.data;
 
     if (vauhtiApiRespJson.length === apiRespJson.total) {
-        console.log('No new donations');
         return;
     }
 
