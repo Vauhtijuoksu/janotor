@@ -80,7 +80,6 @@ if (import.meta.main) {
     
     // Then set up interval to run every 10 seconds
     setInterval(() => {
-        console.log("Running scheduled donation fetch");
         main().catch(console.error);
     }, 10000);
 }
