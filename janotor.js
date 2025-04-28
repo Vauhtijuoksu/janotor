@@ -17,27 +17,54 @@ if (missingVars.length > 0) {
     Deno.exit(1);
 }
 
+const getTimestamp = () => new Date().toISOString();
+
 const handleDonationData = async (url) => {
-    const apiResp = await fetch(url);
-    const apiRespJson = await apiResp.json();
-    const vauhtiApiResp = await fetch(VAUHTIS_URL);
-    const vauhtiApiRespJson = await vauhtiApiResp.json();
+    // Fetch donations from external API and Vauhtijuoksu API
+    let apiRespJson, vauhtiApiRespJson;
+    
+    try {
+        const apiResp = await fetch(url);
+        if (!apiResp.ok) {
+            console.error(`[${getTimestamp()}] ❌ External API error: ${apiResp.status} ${apiResp.statusText} (${url})`);
+            return -1;
+        }
+        apiRespJson = await apiResp.json();
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ External API request failed: ${error.message}`);
+        return -1;
+    }
+    
+    try {
+        const vauhtiApiResp = await fetch(VAUHTIS_URL);
+        if (!vauhtiApiResp.ok) {
+            console.error(`[${getTimestamp()}] ❌ Vauhtijuoksu API error: ${vauhtiApiResp.status} ${vauhtiApiResp.statusText}`);
+            return -1;
+        }
+        vauhtiApiRespJson = await vauhtiApiResp.json();
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Vauhtijuoksu API request failed: ${error.message}`);
+        return -1;
+    }
 
     const promises = [];
     const donations = apiRespJson.data;
 
-    if (vauhtiApiRespJson.length === apiRespJson.total) {
-        return;
-    }
-
     let knownDonations = 0;
+
+    // If we already have all donations, no need to process
+    if (vauhtiApiRespJson.length === apiRespJson.total) {
+        return -1;
+    }
 
     if (!apiRespJson.next_page_url) {
         // Break the loop, last page
-        knownDonations = 1;
+        knownDonations = -1;
     }
 
+    // Process each donation
     for await (const d of donations) {
+        // Skip donations we already have
         if (vauhtiApiRespJson.some(e => e.external_id === d.id.toString())) {
             knownDonations++;
             continue;
@@ -51,22 +78,27 @@ const handleDonationData = async (url) => {
             external_id: d.id.toString()
         };
 
-        const result = await fetch(VAUHTIS_URL, {
-            method: "POST",
-            body: JSON.stringify(donation),
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Basic " + btoa(VAUHTIS_USERNAME + ":" + VAUHTIS_PASSWORD)
+        try {
+            const result = await fetch(VAUHTIS_URL, {
+                method: "POST",
+                body: JSON.stringify(donation),
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Basic " + btoa(VAUHTIS_USERNAME + ":" + VAUHTIS_PASSWORD)
+                }
+            });
+            
+            if (!result.ok) {
+                console.error(`[${getTimestamp()}] ❌ Failed to add donation #${d.id}: ${result.status} ${result.statusText}`);
             }
-        }).catch(err => {
-            console.error(err);
-        });
-        promises.push(result);
-        console.log(`Added donation with id ${d.id}`);
+            promises.push(result);
+        } catch (err) {
+            console.error(`[${getTimestamp()}] ❌ Network error adding donation #${d.id}: ${err.message}`);
+        }
     }
 
     await Promise.all(promises);
-
+    
     return knownDonations;
 };
 
@@ -74,7 +106,6 @@ const main = async () => {
     const knownDonations = await handleDonationData(
         `${SITE_URL}/api/${SITE_ID}/donations`
     );
-
     if (knownDonations === 0) {
         let page = 2;
         while (true) {
@@ -90,7 +121,7 @@ const main = async () => {
 };
 
 if (import.meta.main) {
-    console.log(`Starting donation fetcher, will run every ${FETCH_INTERVAL/1000} seconds`);
+    console.log(`[${getTimestamp()}] Starting donation fetcher, will run every ${FETCH_INTERVAL/1000} seconds`);
     
     // Run main immediately once
     main().catch(console.error);
