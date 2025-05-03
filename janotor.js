@@ -27,46 +27,44 @@ const handleDonationData = async (url) => {
         const apiResp = await fetch(url);
         if (!apiResp.ok) {
             console.error(`[${getTimestamp()}] ❌ External API error: ${apiResp.status} ${apiResp.statusText} (${url})`);
-            return -1;
+            return false;
         }
         apiRespJson = await apiResp.json();
     } catch (error) {
         console.error(`[${getTimestamp()}] ❌ External API request failed: ${error.message}`);
-        return -1;
+        return false;
     }
     
     try {
         const vauhtiApiResp = await fetch(VAUHTIS_URL);
         if (!vauhtiApiResp.ok) {
             console.error(`[${getTimestamp()}] ❌ Vauhtijuoksu API error: ${vauhtiApiResp.status} ${vauhtiApiResp.statusText}`);
-            return -1;
+            return false;
         }
         vauhtiApiRespJson = await vauhtiApiResp.json();
     } catch (error) {
         console.error(`[${getTimestamp()}] ❌ Vauhtijuoksu API request failed: ${error.message}`);
-        return -1;
+        return false;
     }
 
-    const promises = [];
     const donations = apiRespJson.data;
 
-    let knownDonations = 0;
+    let readNextPage = false;
 
     // If we already have all donations, no need to process
     if (vauhtiApiRespJson.length === apiRespJson.total) {
-        return -1;
+        return false;
     }
 
-    if (!apiRespJson.next_page_url) {
-        // Break the loop, last page
-        knownDonations = -1;
+    if (apiRespJson.next_page_url) {
+        readNextPage = true;
     }
 
     // Process each donation
-    for await (const d of donations) {
+    for (const d of donations) {
         // Skip donations we already have
         if (vauhtiApiRespJson.some(e => e.external_id === d.id.toString())) {
-            knownDonations++;
+            readNextPage = false;
             continue;
         }
 
@@ -88,31 +86,32 @@ const handleDonationData = async (url) => {
                 }
             });
             
+            if (result.ok) {
+                console.log(`[${getTimestamp()}] ✅ Successfully added donation #${d.id}`);
+            }
+
             if (!result.ok) {
                 console.error(`[${getTimestamp()}] ❌ Failed to add donation #${d.id}: ${result.status} ${result.statusText}`);
             }
-            promises.push(result);
         } catch (err) {
             console.error(`[${getTimestamp()}] ❌ Network error adding donation #${d.id}: ${err.message}`);
         }
     }
 
-    await Promise.all(promises);
-    
-    return knownDonations;
+    return readNextPage;
 };
 
 const main = async () => {
-    const knownDonations = await handleDonationData(
+    const readNextPage = await handleDonationData(
         `${SITE_URL}/api/${SITE_ID}/donations`
     );
-    if (knownDonations === 0) {
+    if (readNextPage) {
         let page = 2;
         while (true) {
-            const knownDonations = await handleDonationData(
+            const readNextPage = await handleDonationData(
                 `${SITE_URL}/api/${SITE_ID}/donations?page=${page}`
             );
-            if (knownDonations.length !== 0) {
+            if (!readNextPage) {
                 break;
             }
             page++;
