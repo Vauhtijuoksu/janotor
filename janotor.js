@@ -6,10 +6,20 @@ const VAUHTIS_USERNAME = Deno.env.get("VAUHTIS_USERNAME");
 const VAUHTIS_PASSWORD = Deno.env.get("VAUHTIS_PASSWORD");
 const SITE_URL = Deno.env.get("SITE_URL");
 const SITE_ID = Deno.env.get("SITE_ID");
+const X_SITE_ID = Deno.env.get("X_SITE_ID");
+const PER_PAGE = parseInt(Deno.env.get("PER_PAGE") || "60", 10);
 const FETCH_INTERVAL = parseInt(Deno.env.get("FETCH_INTERVAL") || "10000", 10);
 
 // Validate required environment variables
-const requiredVars = ["VAUHTIS_URL", "VAUHTIS_USERNAME", "VAUHTIS_PASSWORD", "SITE_URL", "SITE_ID"];
+const requiredVars = [
+    "VAUHTIS_URL",
+    "VAUHTIS_USERNAME",
+    "VAUHTIS_PASSWORD",
+    "SITE_URL",
+    "SITE_ID",
+    "X_SITE_ID",
+    "PER_PAGE",
+];
 const missingVars = requiredVars.filter(name => !Deno.env.get(name));
 
 if (missingVars.length > 0) {
@@ -24,7 +34,7 @@ const handleDonationData = async (url) => {
     let apiRespJson, vauhtiApiRespJson;
     
     try {
-        const apiResp = await fetch(url);
+        const apiResp = await fetch(url, { headers: { "X-Site-Id": X_SITE_ID } });
         if (!apiResp.ok) {
             console.error(`[${getTimestamp()}] ❌ External API error: ${apiResp.status} ${apiResp.statusText} (${url})`);
             return false;
@@ -56,7 +66,7 @@ const handleDonationData = async (url) => {
         return false;
     }
 
-    if (apiRespJson.next_page_url) {
+    if (apiRespJson.data.length === PER_PAGE) {
         readNextPage = true;
     }
 
@@ -103,13 +113,13 @@ const handleDonationData = async (url) => {
 
 const main = async () => {
     const readNextPage = await handleDonationData(
-        `${SITE_URL}/api/${SITE_ID}/donations`
+        `${SITE_URL}/actions/${SITE_ID}/donations?per_page=${PER_PAGE}`
     );
     if (readNextPage) {
         let page = 2;
         while (true) {
             const readNextPage = await handleDonationData(
-                `${SITE_URL}/api/${SITE_ID}/donations?page=${page}`
+                `${SITE_URL}/actions/${SITE_ID}/donations?per_page=${PER_PAGE}&page=${page}`
             );
             if (!readNextPage) {
                 break;
