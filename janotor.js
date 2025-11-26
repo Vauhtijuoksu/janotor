@@ -61,19 +61,37 @@ const handleDonationData = async (url) => {
 
     let readNextPage = false;
 
-    // If we already have all donations, no need to process
-    if (vauhtiApiRespJson.length === apiRespJson.total) {
-        return false;
-    }
-
     if (apiRespJson.data.length === PER_PAGE) {
         readNextPage = true;
     }
 
     // Process each donation
     for (const d of donations) {
-        // Skip donations we already have
-        if (vauhtiApiRespJson.some(e => e.external_id === d.id.toString())) {
+        const existing = vauhtiApiRespJson.find(e => e.external_id === d.id.toString());
+        // Skip donations we already have, but on first page patch in late-arriving message
+        if (existing) {
+            if (d.message && (!existing.message || existing.message !== d.message)) {
+                try {
+                    console.log(`[${getTimestamp()}] 📨 Patching message for donation #${d.id}: ${d.message}`);
+                    const patchResp = await fetch(`${VAUHTIS_URL}/${existing.id}`, {
+                        method: "PATCH",
+                        body: JSON.stringify({
+                            message: d.message
+                        }),
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": "Basic " + btoa(VAUHTIS_USERNAME + ":" + VAUHTIS_PASSWORD)
+                        }
+                    });
+                    if (patchResp.ok) {
+                        console.log(`[${getTimestamp()}] ✏️ Updated message for donation #${d.id}: ${d.message}`);
+                    } else {
+                        console.error(`[${getTimestamp()}] ❌ Failed to update message for donation #${d.id}: ${patchResp.status} ${patchResp.statusText}`);
+                    }
+                } catch (err) {
+                    console.error(`[${getTimestamp()}] ❌ Network error updating message for donation #${d.id}: ${err.message}`);
+                }
+            }
             readNextPage = false;
             continue;
         }
@@ -112,14 +130,14 @@ const handleDonationData = async (url) => {
 };
 
 const main = async () => {
-    const readNextPage = await handleDonationData(
-        `${SITE_URL}/actions/${SITE_ID}/donations?per_page=${PER_PAGE}`
+	const readNextPage = await handleDonationData(
+		`${SITE_URL}/actions/${SITE_ID}/donations?per_page=${PER_PAGE}`
     );
     if (readNextPage) {
         let page = 2;
         while (true) {
-            const readNextPage = await handleDonationData(
-                `${SITE_URL}/actions/${SITE_ID}/donations?per_page=${PER_PAGE}&page=${page}`
+			const readNextPage = await handleDonationData(
+				`${SITE_URL}/actions/${SITE_ID}/donations?per_page=${PER_PAGE}&page=${page}`
             );
             if (!readNextPage) {
                 break;
