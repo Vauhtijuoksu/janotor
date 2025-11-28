@@ -70,7 +70,7 @@ const handleDonationData = async (url) => {
         const existing = vauhtiApiRespJson.find(e => e.external_id === d.id.toString());
         // Skip donations we already have, but on first page patch in late-arriving message
         if (existing) {
-            if (d.message && (!existing.message || existing.message !== d.message)) {
+            if (d.message && (existing.message == null || existing.message === "")) {
                 try {
                     console.log(`[${getTimestamp()}] 📨 Patching message for donation #${d.id}: ${d.message}`);
                     const patchResp = await fetch(`${VAUHTIS_URL}/${existing.id}`, {
