@@ -4,19 +4,20 @@ import "jsr:@std/dotenv/load";
 const VAUHTIS_URL = Deno.env.get("VAUHTIS_URL");
 const VAUHTIS_USERNAME = Deno.env.get("VAUHTIS_USERNAME");
 const VAUHTIS_PASSWORD = Deno.env.get("VAUHTIS_PASSWORD");
-const SITE_URL = Deno.env.get("SITE_URL");
-const SITE_ID = Deno.env.get("SITE_ID");
+const FRONTEND_API_URL = Deno.env.get("FRONTEND_API_URL");
+const ACTION_ID = Deno.env.get("ACTION_ID");
 const X_SITE_ID = Deno.env.get("X_SITE_ID");
 const PER_PAGE = parseInt(Deno.env.get("PER_PAGE") || "60", 10);
 const FETCH_INTERVAL = parseInt(Deno.env.get("FETCH_INTERVAL") || "10000", 10);
+const DRY_RUN = Deno.args.includes("--dry-run");
 
 // Validate required environment variables
 const requiredVars = [
     "VAUHTIS_URL",
     "VAUHTIS_USERNAME",
     "VAUHTIS_PASSWORD",
-    "SITE_URL",
-    "SITE_ID",
+    "FRONTEND_API_URL",
+    "ACTION_ID",
     "X_SITE_ID",
     "PER_PAGE",
 ];
@@ -29,70 +30,52 @@ if (missingVars.length > 0) {
 
 const getTimestamp = () => new Date().toISOString();
 
-const handleDonationData = async (url) => {
-    // Fetch donations from external API and Vauhtijuoksu API
-    let apiRespJson, vauhtiApiRespJson;
-    
+const handleDonationData = async (url, vauhtiApiRespJson) => {
+    let apiRespJson;
+
     try {
         const apiResp = await fetch(url, { headers: { "X-Site-Id": X_SITE_ID } });
         if (!apiResp.ok) {
             console.error(`[${getTimestamp()}] ❌ External API error: ${apiResp.status} ${apiResp.statusText} (${url})`);
-            return false;
+            return null;
         }
         apiRespJson = await apiResp.json();
     } catch (error) {
         console.error(`[${getTimestamp()}] ❌ External API request failed: ${error.message}`);
-        return false;
-    }
-    
-    try {
-        const vauhtiApiResp = await fetch(VAUHTIS_URL);
-        if (!vauhtiApiResp.ok) {
-            console.error(`[${getTimestamp()}] ❌ Vauhtijuoksu API error: ${vauhtiApiResp.status} ${vauhtiApiResp.statusText}`);
-            return false;
-        }
-        vauhtiApiRespJson = await vauhtiApiResp.json();
-    } catch (error) {
-        console.error(`[${getTimestamp()}] ❌ Vauhtijuoksu API request failed: ${error.message}`);
-        return false;
+        return null;
     }
 
     const donations = apiRespJson.data;
+    let foundExisting = false;
 
-    let readNextPage = false;
-
-    if (apiRespJson.data.length === PER_PAGE) {
-        readNextPage = true;
-    }
-
-    // Process each donation
     for (const d of donations) {
-        const existing = vauhtiApiRespJson.find(e => e.external_id === d.id.toString());
-        // Skip donations we already have, but on first page patch in late-arriving message
+        const existing = vauhtiApiRespJson.find(e => e.external_id === d.id);
         if (existing) {
+            foundExisting = true;
             if (d.message && (existing.message == null || existing.message === "")) {
-                try {
-                    console.log(`[${getTimestamp()}] 📨 Patching message for donation #${d.id}: ${d.message}`);
-                    const patchResp = await fetch(`${VAUHTIS_URL}/${existing.id}`, {
-                        method: "PATCH",
-                        body: JSON.stringify({
-                            message: d.message
-                        }),
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Authorization": "Basic " + btoa(VAUHTIS_USERNAME + ":" + VAUHTIS_PASSWORD)
+                if (DRY_RUN) {
+                    console.log(`[${getTimestamp()}] 🏜️ Would patch message for donation ${d.id}: ${d.message}`);
+                } else {
+                    try {
+                        console.log(`[${getTimestamp()}] 📨 Patching message for donation ${d.id}: ${d.message}`);
+                        const patchResp = await fetch(`${VAUHTIS_URL}/${existing.id}`, {
+                            method: "PATCH",
+                            body: JSON.stringify({ message: d.message }),
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": "Basic " + btoa(VAUHTIS_USERNAME + ":" + VAUHTIS_PASSWORD)
+                            }
+                        });
+                        if (patchResp.ok) {
+                            console.log(`[${getTimestamp()}] ✏️ Updated message for donation ${d.id}: ${d.message}`);
+                        } else {
+                            console.error(`[${getTimestamp()}] ❌ Failed to update message for donation ${d.id}: ${patchResp.status} ${patchResp.statusText}`);
                         }
-                    });
-                    if (patchResp.ok) {
-                        console.log(`[${getTimestamp()}] ✏️ Updated message for donation #${d.id}: ${d.message}`);
-                    } else {
-                        console.error(`[${getTimestamp()}] ❌ Failed to update message for donation #${d.id}: ${patchResp.status} ${patchResp.statusText}`);
+                    } catch (err) {
+                        console.error(`[${getTimestamp()}] ❌ Network error updating message for donation ${d.id}: ${err.message}`);
                     }
-                } catch (err) {
-                    console.error(`[${getTimestamp()}] ❌ Network error updating message for donation #${d.id}: ${err.message}`);
                 }
             }
-            readNextPage = false;
             continue;
         }
 
@@ -100,50 +83,59 @@ const handleDonationData = async (url) => {
             timestamp: d.created_at,
             name: d.name || 'Anonyymi',
             message: d.message || null,
-            amount: d.amount,
-            external_id: d.id.toString()
+            amount: parseFloat(d.amount),
+            external_id: d.id
         };
 
-        try {
-            const result = await fetch(VAUHTIS_URL, {
-                method: "POST",
-                body: JSON.stringify(donation),
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": "Basic " + btoa(VAUHTIS_USERNAME + ":" + VAUHTIS_PASSWORD)
-                }
-            });
-            
-            if (result.ok) {
-                console.log(`[${getTimestamp()}] ✅ Successfully added donation #${d.id}`);
-            }
+        if (DRY_RUN) {
+            console.log(`[${getTimestamp()}] 🏜️ Would add donation ${d.id}: ${donation.name} ${donation.amount}€`);
+        } else {
+            try {
+                const result = await fetch(VAUHTIS_URL, {
+                    method: "POST",
+                    body: JSON.stringify(donation),
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Basic " + btoa(VAUHTIS_USERNAME + ":" + VAUHTIS_PASSWORD)
+                    }
+                });
 
-            if (!result.ok) {
-                console.error(`[${getTimestamp()}] ❌ Failed to add donation #${d.id}: ${result.status} ${result.statusText}`);
+                if (result.ok) {
+                    console.log(`[${getTimestamp()}] ✅ Successfully added donation ${d.id}`);
+                } else {
+                    console.error(`[${getTimestamp()}] ❌ Failed to add donation ${d.id}: ${result.status} ${result.statusText}`);
+                }
+            } catch (err) {
+                console.error(`[${getTimestamp()}] ❌ Network error adding donation ${d.id}: ${err.message}`);
             }
-        } catch (err) {
-            console.error(`[${getTimestamp()}] ❌ Network error adding donation #${d.id}: ${err.message}`);
         }
     }
 
-    return readNextPage;
+    if (foundExisting) return null;
+    return apiRespJson.links.next || null;
 };
 
 const main = async () => {
-	const readNextPage = await handleDonationData(
-		`${SITE_URL}/actions/${SITE_ID}/donations?per_page=${PER_PAGE}`
-    );
-    if (readNextPage) {
-        let page = 2;
-        while (true) {
-			const readNextPage = await handleDonationData(
-				`${SITE_URL}/actions/${SITE_ID}/donations?per_page=${PER_PAGE}&page=${page}`
-            );
-            if (!readNextPage) {
-                break;
+    let vauhtiApiRespJson;
+    if (DRY_RUN) {
+        vauhtiApiRespJson = [];
+    } else {
+        try {
+            const vauhtiApiResp = await fetch(VAUHTIS_URL);
+            if (!vauhtiApiResp.ok) {
+                console.error(`[${getTimestamp()}] ❌ Vauhtijuoksu API error: ${vauhtiApiResp.status} ${vauhtiApiResp.statusText}`);
+                return;
             }
-            page++;
+            vauhtiApiRespJson = await vauhtiApiResp.json();
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ Vauhtijuoksu API request failed: ${error.message}`);
+            return;
         }
+    }
+
+    let url = `${FRONTEND_API_URL}/actions/${ACTION_ID}/donations?per_page=${PER_PAGE}`;
+    while (url) {
+        url = await handleDonationData(url, vauhtiApiRespJson);
     }
 };
 
