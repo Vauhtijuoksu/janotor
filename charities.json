@@ -1,0 +1,37 @@
+[
+    {
+        "name": "wwf",
+        "charity": "92da4106-f0fe-44e0-b8e0-4432c478c1aa",
+        "type": "iraiser",
+        "site": "Dp9tjHj3gsVn",
+        "action": "xnM2sCR8fyKp"
+    },
+    {
+        "name": "unicef",
+        "charity": "9189b39c-7209-4584-a76c-76b5fee1669f",
+        "type": "iraiser",
+        "site": "R3PCRnKEFake",
+        "action": "8o2AVgoLPGWb"
+    },
+    {
+        "name": "tukiliitto",
+        "charity": "dd599051-e599-4b09-86c9-e71cab5168e8",
+        "type": "iraiser",
+        "site": "MaxK3bWWp6ND",
+        "action": "xT5hTWc36zva"
+    },
+    {
+        "name": "helsinkimissio",
+        "charity": "e785ffaf-7665-44b6-a281-66c93f4432cc",
+        "type": "securycast",
+        "page": "https://oma.helsinkimissio.fi/kerays/vauhtijuoksu-2026",
+        "url": "https://oma.helsinkimissio.fi/api/v1.0/site/b5885925-8e5e-e54f-bf02-7b3b111c2721/box/5303a2d7-3476-412e-b961-8138d52e7cd5/fi/messages"
+    },
+    {
+        "name": "aivosaatio",
+        "charity": "f89c399a-f259-4add-a031-5c0fad6384b7",
+        "type": "betternow",
+        "fundraiser": "vauhtijuoksu-2026",
+        "email": "kerays@vauhtijuoksu.fi"
+    }
+]
