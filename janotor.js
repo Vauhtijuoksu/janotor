@@ -100,7 +100,8 @@ const syncDonations = async (charity, donations, vauhtiApiRespJson) => {
     let ok = true;
 
     for (const d of donations) {
-        const existing = vauhtiApiRespJson.find(e => e.external_id === d.id);
+        // The API stores external ids as strings, BetterNow sends numbers
+        const existing = vauhtiApiRespJson.find(e => e.external_id === String(d.id));
         if (existing) {
             foundExisting = true;
             // Only null means the message hasn't arrived yet. An empty message was cleared on purpose, e.g. in the admin panel
@@ -138,7 +139,7 @@ const syncDonations = async (charity, donations, vauhtiApiRespJson) => {
             name: d.name || 'Anonyymi',
             message: d.message || null,
             amount: d.amount,
-            external_id: d.id,
+            external_id: String(d.id),
             charity: charity.charity
         };
 
