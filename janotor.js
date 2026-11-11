@@ -29,9 +29,12 @@ const vauhtisAuth = "Basic " + btoa(VAUHTIS_USERNAME + ":" + VAUHTIS_PASSWORD);
 const getTimestamp = () => new Date().toISOString();
 
 const get = async (url, headers) => {
-    const resp = await fetch(url, { headers });
+    // A fresh connection each time, as a restart fixed a 403 that a reused connection kept getting
+    const resp = await fetch(url, { headers, keepalive: false });
     if (!resp.ok) {
-        throw new Error(`External API error: ${resp.status} ${resp.statusText} (${url})`);
+        // The body tells e.g. a CloudFront block (HTML) apart from an API error (JSON)
+        const body = (await resp.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 300);
+        throw new Error(`External API error: ${resp.status} ${resp.statusText} (${url}) ${body}`);
     }
     return resp;
 };
@@ -197,6 +200,10 @@ const syncCharity = async (charity, vauhtiApiRespJson) => {
     }
 };
 
+// A failing source is retried less often, so retries don't keep a firewall block alive
+const MAX_BACKOFF = 5 * 60 * 1000;
+const backoff = new Map();
+
 const main = async () => {
     let vauhtiApiRespJson;
     if (DRY_RUN) {
@@ -216,11 +223,16 @@ const main = async () => {
     }
 
     for (const charity of charities) {
+        const b = backoff.get(charity);
+        if (b && Date.now() < b.until) continue;
         try {
             await syncCharity(charity, vauhtiApiRespJson);
+            backoff.delete(charity);
         } catch (err) {
             needsFullSync.add(charity);
-            console.error(`[${getTimestamp()}] ❌ ${charity.name}: ${err.message}`);
+            const delay = Math.min(b ? b.delay * 2 : FETCH_INTERVAL, MAX_BACKOFF);
+            backoff.set(charity, { until: Date.now() + delay, delay });
+            console.error(`[${getTimestamp()}] ❌ ${charity.name}: ${err.message}, retrying in ${delay / 1000}s`);
         }
     }
 };
